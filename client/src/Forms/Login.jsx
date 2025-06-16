@@ -1,6 +1,34 @@
 import React from 'react';
+import { auth } from '../firebase';
+import { GoogleAuthProvider, signInWithEmailAndPassword, signInWithPopup } from 'firebase/auth';
+import { createUserDocument } from '../utils/firebaseHElper';
 
 const Login = () => {
+
+  const handleEmailLogin = async(e) =>{
+    e.preventDefault();
+    const email = e.target.email.value;
+    const password = e.target.password.value;
+    
+    try{
+      const userCredential = await  signInWithEmailAndPassword(auth,email,password);
+      await createUserDocument(userCredential.user);
+
+    }catch(err){
+      console.log(err.message);
+    }
+  }
+
+  const handleGoogleLogin = async() =>{
+    const provider = new GoogleAuthProvider();
+    try{
+      const userDetail = await signInWithPopup(auth,provider);
+      await createUserDocument(userDetail.user);
+    }catch(err){
+      console.log(err.message);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
       <div className="w-full max-w-md bg-white rounded-xl shadow-md overflow-hidden p-8">
@@ -11,7 +39,7 @@ const Login = () => {
         </div>
 
         {/* Form */}
-        <form className="space-y-6">
+        <form className="space-y-6" onSubmit={handleEmailLogin}>
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-700">
               Email address
@@ -86,6 +114,7 @@ const Login = () => {
                 <button
                 type="button"
                 className="w-full max-w-xs inline-flex justify-center items-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition"
+                onClick = {handleGoogleLogin}
                 >
                 <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M23.7663 12.2764C23.7663 11.4607 23.7001 10.6406 23.559 9.83807H12.2402V14.4591H18.722C18.453 15.9494 17.5888 17.2678 16.3233 18.1056V21.1039H20.1903C22.4611 19.0139 23.7663 15.9274 23.7663 12.2764Z" fill="#4285F4"/>
