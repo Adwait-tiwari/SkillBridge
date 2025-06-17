@@ -1,7 +1,19 @@
 import React from 'react';
+import {useNavigate} from 'react-router-dom';
 import { ArrowRight, Users, BookOpen, BarChart2, Globe } from 'lucide-react';
 
 const SkillBridgeLanding = () => {
+
+  const navigate = useNavigate();
+
+  const handleLogin = () =>{
+    navigate('/login');
+  }
+
+  const handleSignup = () =>{
+    navigate('/signup');
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       {/* Navigation */}
@@ -17,8 +29,8 @@ const SkillBridgeLanding = () => {
           <a href="#pricing" className="text-gray-700 hover:text-indigo-600">Pricing</a>
         </div>
         <div className="flex space-x-4">
-          <button className="px-4 py-2 text-indigo-600 font-medium rounded-lg hover:bg-indigo-50">Login</button>
-          <button className="px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors">
+          <button className="px-4 py-2 text-indigo-600 font-medium rounded-lg hover:bg-indigo-50"onClick = {handleLogin}>Login</button>
+          <button className="px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors" onClick={handleSignup}>
             Sign Up
           </button>
         </div>
