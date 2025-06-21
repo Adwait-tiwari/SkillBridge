@@ -5,6 +5,7 @@ import Login from "./Forms/Login";
 import RoleSelector from './utils/RoleSelector';
 import TeacherDashboard from './LandingPage/TeacherDashboard';
 import StudentDashboard from './LandingPage/StudentDashboard';
+import TeacherProfile from './Forms/TeacherProfile';
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
           <Route path="/teacher" element={<TeacherDashboard />} /> 
         </Routes>
       </Router>
+      // <TeacherProfile/>
   );
 }
 

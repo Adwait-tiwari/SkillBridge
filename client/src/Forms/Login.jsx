@@ -1,9 +1,11 @@
 import React from 'react';
 import { auth } from '../firebase';
 import { GoogleAuthProvider, signInWithEmailAndPassword, signInWithPopup } from 'firebase/auth';
-import { createUserDocument } from '../utils/firebaseHElper';
+import { createUserDocument } from '../utils/firebaseHelper';
+import {useNavigate} from 'react-router-dom';
 
 const Login = () => {
+  const navigate = useNavigate();
 
   const handleEmailLogin = async(e) =>{
     e.preventDefault();
@@ -13,7 +15,7 @@ const Login = () => {
     try{
       const userCredential = await  signInWithEmailAndPassword(auth,email,password);
       await createUserDocument(userCredential.user);
-
+      navigate('/select-role');
     }catch(err){
       console.log(err.message);
     }
@@ -24,6 +26,7 @@ const Login = () => {
     try{
       const userDetail = await signInWithPopup(auth,provider);
       await createUserDocument(userDetail.user);
+      navigate('/select-role');
     }catch(err){
       console.log(err.message);
     }
