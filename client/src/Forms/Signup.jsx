@@ -1,6 +1,55 @@
-import React from 'react';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
+import React, { useState } from 'react';
+import { auth, db } from '../firebase';
+import { doc, setDoc } from 'firebase/firestore';
 
 const SignupPage = () => {
+  const[form,setForm] = useState({
+    fname : '',
+    lname : '',
+    email : '',
+    password : '',
+    confirmPassword : ''
+  })
+  const[error,setError] = useState('');
+
+  const handleChange = (e) =>{
+    setForm({...form,[e.target.name] : e.target.value});
+  }
+
+
+  const handleSubmit = async(e) =>{
+    e.preventDefault();
+
+    if(form.password !== form.confirmPassword){
+      alert("Password does not Match");
+    }
+
+    try{
+      const userCred = await createUserWithEmailAndPassword(auth,form.email,form.password);
+      const user = userCred.user;
+
+      await setDoc(doc(db,'users',user.uid),{
+        uid : user.uid,
+        name : form.fname + form.lname,
+        email : form.email,
+        createdAt : new Date()
+      })
+
+      alert("Signup Successfully!");
+      setError('');
+      setForm({
+        fname : '',
+        lname : '',
+        email : '',
+        password: '',
+        confirmPassword : ''
+      })
+    }catch(err){
+      setError(err.message);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
       <div className="w-full max-w-md bg-white rounded-xl shadow-md overflow-hidden p-8">
@@ -26,7 +75,7 @@ const SignupPage = () => {
         </div>
 
         {/* Form */}
-        <form className="space-y-5">
+        <form className="space-y-5" onSubmit={handleSubmit}>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label htmlFor="first-name" className="block text-sm font-medium text-gray-700">
@@ -34,9 +83,11 @@ const SignupPage = () => {
               </label>
               <input
                 id="first-name"
-                name="first-name"
+                name="fname"
                 type="text"
                 autoComplete="given-name"
+                value={form.fname}
+                onChange={handleChange}
                 placeholder="John"
                 required
                 className="mt-1 block w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
@@ -48,9 +99,11 @@ const SignupPage = () => {
               </label>
               <input
                 id="last-name"
-                name="last-name"
+                name="lname"
                 type="text"
                 autoComplete="family-name"
+                value={form.lname}
+                onChange={handleChange}
                 placeholder="Doe"
                 required
                 className="mt-1 block w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
@@ -67,6 +120,8 @@ const SignupPage = () => {
               name="email"
               type="email"
               autoComplete="email"
+              value={form.email}
+              onChange={handleChange}
               placeholder="you@example.com"
               required
               className="mt-1 block w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
@@ -81,6 +136,8 @@ const SignupPage = () => {
               id="password"
               name="password"
               type="password"
+              value={form.password}
+              onChange={handleChange}
               placeholder="••••••••"
               autoComplete="new-password"
               required
@@ -97,8 +154,10 @@ const SignupPage = () => {
             </label>
             <input
               id="confirm-password"
-              name="confirm-password"
+              name="confirmPassword"
               type="password"
+              value={form.confirmPassword}
+              onChange={handleChange}
               placeholder="••••••••"
               autoComplete="new-password"
               required
@@ -129,7 +188,7 @@ const SignupPage = () => {
               </label>
             </div>
           </div>
-
+           {error && <p className="text-red-500 text-sm mb-2">{error}</p>}
           <button
             type="submit"
             className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition"

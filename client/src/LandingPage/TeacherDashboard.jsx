@@ -1,12 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import TeacherProfile from '../Forms/TeacherProfile';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import AddSession from '../Forms/AddSession';
+import VideoCalling from '../utils/VideoCalling';
+import { doc, getDoc, setDoc, collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
+import { ToastContainer, toast } from 'react-toastify';
 import { db } from '../firebase';
+import { useNavigate } from 'react-router-dom';
 
 const TeacherDashboard = () => {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const profilepic = user?.photoURL;
+
   const [isEditing, setIsEditing] = useState(false);
   const [showProfileForm, setShowProfileForm] = useState(false);
+  const [showAddSession, setShowAddSession] = useState(false);
 
   const [profileData, setProfileData] = useState({
     name: '',
@@ -19,17 +28,12 @@ const TeacherDashboard = () => {
   });
 
   const [upcomingSessions, setUpcomingSessions] = useState([]);
-  const [showAddSession, setShowAddSession] = useState(false);
   const [sessionHistory, setSessionHistory] = useState([]);
-
-  const { user } = useAuth();
-  const profilepic = user?.photoURL;
+  const [newSkill, setNewSkill] = useState('');
 
   useEffect(() => {
     const isCompleted = localStorage.getItem('isTeacherProfileCompleted');
-    if (!isCompleted) {
-      setShowProfileForm(true);
-    }
+    if (!isCompleted) setShowProfileForm(true);
 
     const fetchProfile = async () => {
       if (user?.uid) {
@@ -41,8 +45,69 @@ const TeacherDashboard = () => {
       }
     };
 
+    const fetchSessions = async () => {
+      if (user?.uid) {
+        const q = query(collection(db, 'sessions'), where('uid', '==', user.uid));
+        const querySnapshot = await getDocs(q);
+        const sessions = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+
+        const today = new Date().toISOString().split('T')[0];
+        const upcoming = [];
+        const history = [];
+
+        sessions.forEach((session) => {
+          if (session.completed || session.date < today) {
+            history.push(session);
+          } else {
+            upcoming.push(session);
+          }
+        });
+
+        setUpcomingSessions(upcoming);
+        setSessionHistory(history);
+      }
+    };
+
+    const listenToSkillRequests = () => {
+      if (!user?.uid) return;
+
+      const q = query(
+        collection(db, 'skillRequests'),
+        where('teacher', '==', profileData.name) // Match by teacher name
+      );
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+          snapshot.docChanges().forEach((change) => {
+            if (change.type === 'added') {
+              const data = change.doc.data();
+              toast.info(`📩 New Request from ${data.StudentName} for ${data.skill}: "${data.message}"`, {
+                position: 'top-right',
+                autoClose: 5000,
+                hideProgressBar: false,
+                closeOnClick: true,
+                pauseOnHover: true,
+                draggable: true,
+              });
+            }
+          });
+        });
+
+        return unsubscribe;
+    };
+
+    fetchProfile().then(() => {
+      const unsub = listenToSkillRequests();
+      return () => {
+        if (unsub) unsub();
+      };
+    });
+
     fetchProfile();
-  }, [user]);
+    fetchSessions();
+  }, [profileData.name,user]);
 
   const handleProfileCompleted = () => {
     localStorage.setItem('isTeacherProfileCompleted', 'true');
@@ -65,7 +130,6 @@ const TeacherDashboard = () => {
           uid: user.uid,
           email: user.email
         };
-
         await setDoc(doc(db, 'teachers', user.uid), profileToSave);
         alert('Profile saved successfully');
         setIsEditing(false);
@@ -76,20 +140,44 @@ const TeacherDashboard = () => {
     }
   };
 
+  const handleSkillInputChange = (e) => {
+    setNewSkill(e.target.value);
+  };
+
+  const handleAddSkills = async () => {
+    if (!newSkill.trim()) return;
+
+    const newSkillsArray = newSkill
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+
+    const currentSkills = profileData.skills || [];
+    const updatedSkills = Array.from(new Set([...currentSkills, ...newSkillsArray]));
+
+    try {
+      await setDoc(
+        doc(db, 'teachers', user.uid),
+        { ...profileData, skills: updatedSkills },
+        { merge: true }
+      );
+
+      setProfileData((prev) => ({ ...prev, skills: updatedSkills }));
+      setNewSkill('');
+    } catch (err) {
+      console.error('Error adding skills:', err);
+      alert('❌ Failed to add skills.');
+    }
+  };
+
   const handleAddSession = () => {
-    const newSession = {
-      id: upcomingSessions.length + 1,
-      student: '',
-      date: '',
-      duration: '',
-      subject: ''
-    };
-    setUpcomingSessions([...upcomingSessions, newSession]);
+    navigate('/session');
     setShowAddSession(false);
   };
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <ToastContainer />
       {showProfileForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
           <TeacherProfile onComplete={handleProfileCompleted} />
@@ -112,7 +200,9 @@ const TeacherDashboard = () => {
 
       <main className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left Column */}
           <div className="lg:col-span-1 space-y-6">
+
             {/* Profile Overview */}
             <div className="bg-white shadow rounded-lg">
               <div className="px-4 py-5 bg-indigo-700 flex justify-between items-center rounded-t-lg">
@@ -192,31 +282,47 @@ const TeacherDashboard = () => {
               </div>
             </div>
 
-            {/* Skills */}
+            {/* Skills Section */}
             <div className="bg-white shadow rounded-lg">
               <div className="px-4 py-5 bg-indigo-700 rounded-t-lg">
                 <h3 className="text-white font-medium text-lg">Skills Offered</h3>
               </div>
-              <div className="p-6">
-                <div className="flex flex-wrap gap-2">
+              <div className="p-6 space-y-6">
+                <div className="flex gap-3 items-center">
+                  <input
+                    type="text"
+                    value={newSkill}
+                    onChange={handleSkillInputChange}
+                    placeholder="Enter skills (e.g. math, physics)"
+                    className="flex-1 px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring focus:border-indigo-500"
+                  />
+                  <button
+                    onClick={handleAddSkills}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md shadow-md"
+                  >
+                    Add
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap gap-3">
                   {profileData.skills?.length > 0 ? (
                     profileData.skills.map((skill, index) => (
                       <span
                         key={index}
-                        className="bg-indigo-100 text-indigo-800 px-3 py-1 rounded-full text-sm"
+                        className="bg-indigo-100 text-indigo-800 px-3 py-1 rounded-full text-sm font-medium shadow-sm"
                       >
                         {skill}
                       </span>
                     ))
                   ) : (
-                    <p className="text-gray-500">No skills added yet</p>
+                    <p className="text-gray-500 text-sm">No skills added yet</p>
                   )}
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Sessions */}
+          {/* Right Column - Sessions */}
           <div className="lg:col-span-2 space-y-6">
             {/* Upcoming Sessions */}
             <div
@@ -238,15 +344,56 @@ const TeacherDashboard = () => {
               <div className="p-6">
                 {upcomingSessions.length > 0 ? (
                   upcomingSessions.map((session) => (
-                    <div key={session.id} className="mb-4 border-b pb-4">
-                      <h4 className="font-semibold">{session.subject || 'Subject'}</h4>
-                      <p>
-                        {session.date || 'Date'} | {session.duration || 'Duration'}
-                      </p>
+                    <div
+                      key={session.id}
+                      className="mb-4 p-4 border rounded-md shadow-sm bg-white hover:shadow-md transition"
+                    >
+                      <div className="flex justify-between items-center mb-2">
+                        <div>
+                          <h4 className="text-lg font-semibold text-indigo-700">{session.topic}</h4>
+                          <p className="text-sm text-gray-600">
+                            📅 {session.date} | ⏰ {session.time} | ⏳ {session.duration} mins
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-3 mt-3">
+                        <button
+                          onClick={async () => {
+                            try {
+                              const sessionRef = doc(db, "sessions", session.id);
+                              await setDoc(sessionRef, { ...session, completed: true }, { merge: true });
+
+                              setUpcomingSessions((prev) => prev.filter((s) => s.id !== session.id));
+                              setSessionHistory((prev) => [...prev, { ...session, completed: true }]);
+
+                              navigate('/video-call');
+
+                              alert("✅ Session marked as completed.");
+                            } catch (err) {
+                              console.error("Error updating session:", err);
+                              alert("❌ Failed to complete session.");
+                            }
+                          }}
+                          className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-md text-sm font-medium"
+                        >
+                          ▶ Start Session
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            localStorage.setItem("rescheduleSessionId", session.id);
+                            navigate("/session");
+                          }}
+                          className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md text-sm font-medium"
+                        >
+                          🔁 Reschedule
+                        </button>
+                      </div>
                     </div>
                   ))
                 ) : (
-                  <p className="text-gray-500">No upcoming sessions</p>
+                  <p className="text-gray-500 text-sm">No upcoming sessions available.</p>
                 )}
               </div>
             </div>
@@ -258,11 +405,11 @@ const TeacherDashboard = () => {
               </div>
               <div className="p-6">
                 {sessionHistory.length > 0 ? (
-                  sessionHistory.map((session, i) => (
-                    <div key={i} className="border-b py-2">
-                      <p className="font-medium">{session.subject}</p>
+                  sessionHistory.map((session) => (
+                    <div key={session.id} className="border-b py-2">
+                      <p className="font-medium">{session.topic}</p>
                       <p className="text-sm text-gray-600">
-                        {session.date} | {session.duration}
+                        {session.date} | {session.time} | {session.duration} mins
                       </p>
                     </div>
                   ))

@@ -1,21 +1,24 @@
-import React, { useState } from 'react';
+import React, { useState,useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import StudentProfileForm from '../Forms/StudentProfile';
+import { collection, doc, getDoc, getDocs, query, serverTimestamp,  setDoc,  where } from 'firebase/firestore';
+import { db } from '../firebase';
 
 const StudentDashboard = () => {
   const {user} = useAuth();
+  const [searchTerm,setSearchTerm] = useState('') 
   const profilepic = user?.photoURL;
 
   const [profile, setProfile] = useState({
-    name: "",
-    photo: "", // Placeholder photo
+    name: "", 
     bio: "",
-    skills: [],
+    skills:[],
     isEditing: false
   });
 
   const [skillRequests, setSkillRequests] = useState([]);
-
-  const learningHistory = []; // Empty array for learning history
+  const [showProfilePopup, setShowProfilePopup] = useState(false);
+  const learningHistory = []; 
 
   const [newRequest, setNewRequest] = useState({
     skill: "",
@@ -29,24 +32,152 @@ const StudentDashboard = () => {
     comment: ""
   });
 
+    useEffect(() => {
+      const isProfileCompleted = localStorage.getItem("isStudentProfileCompleted");
+      if (!isProfileCompleted) {
+        setShowProfilePopup(true);
+      }
+
+      const fetchDetails = async() =>{
+          if(user?.uid){
+            try{
+              const profileRef = doc(db,'students',user.uid)
+              const profileSnap = await getDoc(profileRef);
+              if(profileSnap.exists()){
+                const data = profileSnap.data()
+                setProfile(prev => ({
+                  ...prev,
+                  name : data.name || "",
+                  bio : data.bio || "",
+                  skills : data.skills || []
+                }));
+              }
+            }catch(error){
+              console.log(error);
+            }
+          }
+      }  
+
+      const fetchSkillRequest = async() => {
+        if (user?.uid) {
+          try {
+            const requestsCollectionRef = collection(db, 'skillRequests');
+            const q = query(requestsCollectionRef, where('studentId', '==', user.uid));
+            const querySnapshot = await getDocs(q);
+            
+            console.log("Query Result Count:", querySnapshot.size);
+
+            const requests = querySnapshot.docs.map(doc => ({
+              id: doc.id,
+              ...doc.data()
+            }));
+            setSkillRequests(requests);
+            console.log("setSkillRequests called with:", requests);
+          } catch (error) {
+            console.error("Error fetching skill requests:", error);
+          }
+        }
+      };
+
+      fetchDetails()
+      if(user?.uid){
+        fetchSkillRequest();
+      }
+      
+    }, [user?.uid]);
+
+    const handleProfileComplete = () => {
+      localStorage.setItem("isStudentProfileCompleted", "true");
+      setShowProfilePopup(false);
+    };
+
   const handleEditProfile = () => {
     setProfile({ ...profile, isEditing: !profile.isEditing });
   };
 
-  const handleSendRequest = () => {
-    // Add request sending logic here
-    alert(`Request sent for ${newRequest.skill}`);
-    setNewRequest({ skill: "", teacher: "", message: "" });
+    const handleSaveProfile = async () => {
+      try {
+        const profileRef = doc(db, 'students', user.uid);
+        await setDoc(
+          profileRef,
+          {
+            name: profile.name,
+            bio: profile.bio,
+            skills: profile.skills
+          },
+          { merge: true }
+        );
+        alert('✅ Profile updated successfully!');
+        setProfile((prev) => ({ ...prev, isEditing: false }));
+      } catch (error) {
+        console.error('❌ Error updating profile:', error);
+        alert('Failed to save profile changes.');
+      }
+    };
+
+  const handleSearch = async() => {
+      if(!searchTerm.trim()) return;
+
+      try{
+        const sessionRef  = collection(db,'sessions');
+        const q = query(sessionRef,where('topic','==',searchTerm.trim()));
+        const querySnapshot = await getDocs(q);
+
+        if(!querySnapshot.empty){
+          const sessionMatcher = querySnapshot.docs[0].data();
+          setNewRequest({
+            skill: searchTerm.trim(),
+            teacher: sessionMatcher.name || "",
+            message: ""
+          });
+          alert(`✅ Found teacher ${sessionMatcher.name} for "${searchTerm}"`);
+        }else{
+          alert("❌ No teacher found with that subject.");
+        }
+      }catch(error){
+       console.error("Error searching teachers:", error);
+      alert("🔥 Error searching teachers. See console for details.");
+      }
+  }
+  const handleSendRequest = async() => {
+    if (!newRequest.skill || !newRequest.teacher || !newRequest.message) {
+      alert("⚠️ Please fill in all the fields before sending the request.");
+      return;
+    }
+
+    const LatestRequest = {
+      skill : newRequest.skill,
+      teacher : newRequest.teacher,
+      StudentName : profile.name,
+      studentId : user.uid,
+      message : newRequest.message,
+      status: 'pending',
+      timestamp: serverTimestamp()
+    }
+
+    try{
+       const requestRef = doc(collection(db, 'skillRequests'));
+      await setDoc(requestRef, LatestRequest);
+      alert(`Request sent for ${newRequest.skill}`);
+        setNewRequest({ skill: "", teacher: "", message: "" });
+    }catch(error){
+      console.error("Error sending request:", error);
+      alert("❌ Failed to send the request.");
+    }
   };
 
   const handleSubmitFeedback = () => {
-    // Add feedback submission logic here
     alert(`Feedback submitted for session ${feedback.sessionId}`);
     setFeedback({ sessionId: "", rating: 0, comment: "" });
   };
 
   return (
     <div className="min-h-screen bg-gray-50">
+        {showProfilePopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <StudentProfileForm onComplete={handleProfileComplete} />
+        </div>
+      )}
       {/* Header */}
       <header className="bg-white shadow">
         <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 flex justify-between items-center">
@@ -102,14 +233,14 @@ const StudentDashboard = () => {
                         className="w-full px-3 py-2 border border-gray-300 rounded-md"
                         rows="3"
                       />
-                      <button className="w-full py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">
+                      <button className="w-full py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700" onClick={handleSaveProfile}>
                         Save Changes
                       </button>
                     </div>
                   ) : (
                     <>
-                      <h2 className="text-xl font-bold text-gray-900">{profile.name || "Student Name"}</h2>
-                      <p className="text-gray-600 text-center mt-2">{profile.bio || "No bio yet. Click edit to add one!"}</p>
+                      <h2 className="text-xl font-bold text-gray-900">{profile.name || "User Name"}</h2>
+                      <p className="text-gray-600 text-center mt-2">{profile.bio || "No bio is Available"}</p>
                     </>
                   )}
                   
@@ -213,10 +344,14 @@ const StudentDashboard = () => {
                   <div className="flex space-x-2">
                     <input
                       type="text"
+                      value={searchTerm}
+                      onChange = {(e) => setSearchTerm(e.target.value)}
                       placeholder="Search teachers by skill..."
                       className="flex-1 min-w-0 block w-full px-3 py-2 rounded-md border border-gray-300 shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                     />
-                    <button className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    <button className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                        onClick={handleSearch}
+                    >
                       Search
                     </button>
                   </div>
@@ -266,45 +401,61 @@ const StudentDashboard = () => {
                 {/* Request List */}
                 <div>
                   <h4 className="text-sm font-medium text-gray-700 mb-3">Your Requests</h4>
-                  {skillRequests.length > 0 ? (
-                    <div className="overflow-hidden border border-gray-200 rounded-lg">
-                      <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Skill</th>
-                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Teacher</th>
-                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                          {skillRequests.map((request) => (
-                            <tr key={request.id}>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{request.skill}</td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{request.teacher || "Any"}</td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                                  request.status === 'accepted' ? 'bg-green-100 text-green-800' :
-                                  request.status === 'rejected' ? 'bg-red-100 text-red-800' :
-                                  'bg-yellow-100 text-yellow-800'
-                                }`}>
-                                  {request.status}
-                                </span>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                <button className="text-indigo-600 hover:text-indigo-900 mr-3">View</button>
-                                {request.status === 'pending' && (
-                                  <button className="text-red-600 hover:text-red-900">Cancel</button>
-                                )}
-                              </td>
+                 {skillRequests.length > 0 ? (
+                      <div className="overflow-hidden border border-gray-200 rounded-lg">
+                        <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Skill
+                              </th>
+                              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Teacher
+                              </th>
+                              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Status
+                              </th>
+                              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Actions
+                              </th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <p className="text-center text-gray-500">You haven't made any skill requests yet</p>
-                  )}
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {skillRequests.map((request) => (
+                                  <tr key={request.id}>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                      {request.skill || '—'}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                      {request.teacher || 'Any'}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                      <span
+                                        className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                                          request.status === 'accepted'
+                                            ? 'bg-green-100 text-green-800'
+                                            : request.status === 'rejected'
+                                            ? 'bg-red-100 text-red-800'
+                                            : 'bg-yellow-100 text-yellow-800'
+                                        }`}
+                                      >
+                                        {request.status || 'pending'}
+                                      </span>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                      <button className="text-indigo-600 hover:text-indigo-900 mr-3">View</button>
+                                      {request.status === 'pending' && (
+                                        <button className="text-red-600 hover:text-red-900">Cancel</button>
+                                      )}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : (
+                          <p className="text-center text-gray-500">You haven't made any skill requests yet</p>
+                        )}
                 </div>
               </div>
             </div>

@@ -65,30 +65,6 @@ const TeacherProfile = ({ onComplete }) => {
 
         <form onSubmit={handleSubmit} className="w-full max-w-xl bg-gray-100 p-8 rounded-xl shadow-xl space-y-6">
           {/* Profile Picture Upload */}
-          <div className="flex flex-col items-center">
-            <div className="relative w-32 h-32 mb-4 rounded-full overflow-hidden border-4 border-gray-300">
-              <img
-                src={profileImage || "/placeholder-user.png"}
-                alt="Profile"
-                className="w-full h-full object-cover"
-              />
-            </div>
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-            >
-              Upload Photo
-            </button>
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleImageUpload}
-              accept="image/*"
-              className="hidden"
-            />
-          </div>
-
           {/* Name Field */}
           <div>
             <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
